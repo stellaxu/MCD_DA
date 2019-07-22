@@ -12,6 +12,11 @@ from taskcv_loader import CVDataLoader
 from basenet import *
 import torch.nn.functional as F
 import os
+import source_risk
+import dev
+import dev_icml
+import seperate_data as sep
+
 # Training settings
 parser = argparse.ArgumentParser(description='Visda Classification')
 parser.add_argument('--batch-size', type=int, default=32, metavar='N',
@@ -46,8 +51,10 @@ parser.add_argument('--val_path', type=str, default='', metavar='B',
                     help='directory of target datasets')
 parser.add_argument('--resnet', type=str, default='101', metavar='B',
                     help='which resnet 18,50,101,152,200')
-parser.add_argument('--load_network_path', type=str, default='', metavar='B',
+parser.add_argument('--load_network_path', type=str, default='',
                     help='whether load saved network')
+parser.add_argument('--validation_method', type=str, choices=['Source_Risk', 'Dev', 'Dev_icml'])
+
 args = parser.parse_args()
 args.cuda = not args.no_cuda and torch.cuda.is_available()
 train_path = args.train_path
@@ -76,6 +83,10 @@ data_transforms = {
 dsets = {x: datasets.ImageFolder(os.path.join(x), data_transforms[x]) for x in [train_path,val_path]}
 dset_sizes = {x: len(dsets[x]) for x in [train_path, val_path]}
 dset_classes = dsets[train_path].classes
+
+class_num = len(dset_classes)
+print("Class number: {}".format(class_num))
+
 print ('classes'+str(dset_classes))
 use_gpu = torch.cuda.is_available()
 torch.manual_seed(args.seed)
@@ -215,60 +226,101 @@ def train(num_epoch, option, num_layer, test_load, cuda):
                     F1.train()
                     F2.train()
     elif test_load:
+        G_load = ResBase(option)
+        F1_load = ResClassifier(num_layer=num_layer)
+        F2_load = ResClassifier(num_layer=num_layer)
 
-        while True:
-            G_load = ResBase(option)
-            F1_load = ResClassifier(num_layer=num_layer)
-            F2_load = ResClassifier(num_layer=num_layer)
+        F1_load.apply(weights_init)
+        F2_load.apply(weights_init)
+        G_path = args.load_network_path + 'G.pth'
+        F1_path = args.load_network_path + 'F1.pth'
+        F2_path = args.load_network_path + 'F2.pth'
+        G_load.load_state_dict(torch.load(G_path))
+        F1_load.load_state_dict(torch.load(F1_path))
+        F2_load.load_state_dict(torch.load(F2_path))
+        #
+        # G_load = torch.load('whole_model_G.pth')
+        # F1_load = torch.load('whole_model_F1.pth')
+        # F2_load = torch.load('whole_model_F2.pth')
+        if cuda:
+            G_load.cuda()
+            F1_load.cuda()
+            F2_load.cuda()
+        G_load.eval()
+        F1_load.eval()
+        F2_load.eval()
+        test_loss = 0
+        correct = 0
+        correct2 = 0
+        size = 0
 
-            F1_load.apply(weights_init)
-            F2_load.apply(weights_init)
-            G_load.load_state_dict(torch.load('save/G.pth'))
-            F1_load.load_state_dict(torch.load('save/F1.pth'))
-            F2_load.load_state_dict(torch.load('save/F2.pth'))
+        val = False
+        for batch_idx, data in enumerate(dataset_test):
+            if batch_idx * batch_size > 5000:
+                break
+            if args.cuda:
+                data2 = data['T']
+                target2 = data['T_label']
+                if val:
+                    data2 = data['S']
+                    target2 = data['S_label']
+                data2, target2 = data2.cuda(), target2.cuda()
+            data1, target1 = Variable(data2, volatile=True), Variable(target2)
+            output = G_load(data1)
+            output1 = F1_load(output)
+            output2 = F2_load(output)
+            # print("Feature: {}\n Predict_value: {}".format(output, output2))
+            test_loss += F.nll_loss(output1, target1).data[0]
+            pred = output1.data.max(1)[1]  # get the index of the max log-probability
+            correct += pred.eq(target1.data).cpu().sum()
+            pred = output2.data.max(1)[1]  # get the index of the max log-probability
+            k = target1.data.size()[0]
+            correct2 += pred.eq(target1.data).cpu().sum()
 
-            if cuda:
-                G_load.cuda()
-                F1_load.cuda()
-                F2_load.cuda()
-            G_load.eval()
-            F1_load.eval()
-            F2_load.eval()
-            test_loss = 0
-            correct = 0
-            correct2 = 0
-            size = 0
+            size += k
+        test_loss = test_loss
+        test_loss /= len(test_loader)  # loss function already averages over batch size
+        print('\nTest set: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%) ({:.0f}%)\n'.format(
+            test_loss, correct, size,
+            100. * correct / size, 100. * correct2 / size))
+        value = max(100. * correct / size, 100. * correct2 / size)
+        print("Value: {}".format(value))
+        if args.cuda:
+            use_gpu = True
+        else:
+            use_gpu = False
+        # configure network path
+        if (100. * correct /size) > (100. *correct2 /size):
+            predict_network_path = F1_path
+        else:
+            predict_network_path = F2_path
 
-            val = False
-            for batch_idx, data in enumerate(dataset_test):
-                if batch_idx * batch_size > 5000:
-                    break
-                if args.cuda:
-                    data2 = data['T']
-                    target2 = data['T_label']
-                    if val:
-                        data2 = data['S']
-                        target2 = data['S_label']
-                    data2, target2 = data2.cuda(), target2.cuda()
-                data1, target1 = Variable(data2, volatile=True), Variable(target2)
-                output = G_load(data1)
-                output1 = F1_load(output)
-                output2 = F2_load(output)
-                test_loss += F.nll_loss(output1, target1).data[0]
-                pred = output1.data.max(1)[1]  # get the index of the max log-probability
-                correct += pred.eq(target1.data).cpu().sum()
-                pred = output2.data.max(1)[1]  # get the index of the max log-probability
-                k = target1.data.size()[0]
-                correct2 += pred.eq(target1.data).cpu().sum()
+        feature_network_path = G_path
 
-                size += k
-            test_loss = test_loss
-            test_loss /= len(test_loader)  # loss function already averages over batch size
-            print('\nTest set: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%) ({:.0f}%)\n'.format(
-                test_loss, correct, size,
-                100. * correct / size, 100. * correct2 / size))
-            value = max(100. * correct / size, 100. * correct2 / size)
-            print("Value: {}".format(value))
+        # configure the datapath for target and test
+        source_path = 'chn_training_list.txt'
+        target_path = 'chn_validation_list.txt'
+        cls_source_list, cls_validation_list = sep.split_set(source_path, class_num)
+
+        if args.validation_method == 'Source_Risk':
+            cv_loss = source_risk.cross_validation_loss(args, feature_network_path, predict_network_path, num_layer, cls_source_list,
+                                                target_path, cls_validation_list,
+                                                class_num, 256,
+                                                224, batch_size,
+                                                use_gpu)
+        # elif args.validation_method == 'Dev':
+        #     cv_loss = dev.cross_validation_loss(feature_network_path, predict_network_path, num_layer, cls_source_list,
+        #                                         target_path, cls_validation_list,
+        #                                         class_num, 256,
+        #                                         224, batch_size,
+        #                                         use_gpu)
+        # else:
+        #     cv_loss = dev_icml.cross_validation_loss(feature_network_path, predict_network_path, num_layer, cls_source_list,
+        #                                         target_path, cls_validation_list,
+        #                                         class_num, 256,
+        #                                         224, batch_size,
+        #                                         use_gpu)
+        print(cv_loss)
 
 def test(epoch):
     G.eval()
