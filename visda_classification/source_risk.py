@@ -48,9 +48,6 @@ def cross_validation_loss(args, feature_network_path, predict_network_path, num_
     option = 'resnet' + args.resnet
     G = ResBase(option)
     F1 = ResClassifier(num_layer=num_layer)
-
-    # F1.apply(weights_init)
-
     G.load_state_dict(torch.load(feature_network_path))
     F1.load_state_dict(torch.load(predict_network_path))
 
@@ -77,38 +74,20 @@ def cross_validation_loss(args, feature_network_path, predict_network_path, num_
 
     feature_val = G(val_input)
     pred_label = F1(feature_val)
-    # _, pred_label = predict_network(val_input)
-
-    # print(pred_label.shape)
-    # print(pred_label)
-    # print(pred_label[0])
-    # print(val_labels[0])
-    # print(val_labels[0] + 1)
-
     w = pred_label[0].shape[0]
-
     error = np.zeros(1)
-    # print(predict_loss(val_labels[0], pred_label[0].view(1, w)))
-    # print(predict_loss(val_labels[0], pred_label[0].view(1, w))[0])
     error[0] = predict_loss(val_labels[0], pred_label[0].view(1, w))[0]
     print("Error: {}".format(error[0]))
     error = error.reshape(1, 1)
     print(error)
     for num_image in range(1, len(pred_label)):
         new_error = np.zeros(1)
-
         single_pred_label = pred_label[num_image]
         w = single_pred_label.shape[0]
         single_val_label = val_labels[num_image]
-        # print(single_val_label)
-        # print(single_pred_label)
-        # print(predict_loss(single_val_label, single_pred_label.view(1, w)))
         new_error[0] = predict_loss(single_val_label, single_pred_label.view(1, w))[0]
         new_error = new_error.reshape(1, 1)
-        # print("New error: {}".format(new_error[0]))
         error = np.append(error, new_error, axis=0)
-        # print("Error: {}".format(error))
-        # print("Error size: {}".format(error.shape))
 
     for _ in range(len(iter_val) - 1):
         val_input, val_labels = iter_val.next()
@@ -130,8 +109,6 @@ def cross_validation_loss(args, feature_network_path, predict_network_path, num_
             new_error = new_error.reshape(1, 1)
 
             error = np.append(error, new_error, axis=0)
-            # print("Error: {}".format(error))
-            # print("Error size: {}".format(error.shape))
     print("Error: {}".format(error))
     cross_val_loss = error.sum()
     return cross_val_loss

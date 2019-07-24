@@ -19,7 +19,7 @@ import seperate_data as sep
 
 # Training settings
 parser = argparse.ArgumentParser(description='Visda Classification')
-parser.add_argument('--batch-size', type=int, default=32, metavar='N',
+parser.add_argument('--batch-size', type=int, default=13, metavar='N',
                     help='input batch size for training (default: 64)')
 parser.add_argument('--test-batch-size', type=int, default=32, metavar='N',
                     help='input batch size for testing (default: 1000)')
@@ -66,14 +66,14 @@ save_path = args.save+'_'+str(args.num_k)
 
 data_transforms = {
     train_path: transforms.Compose([
-        transforms.Scale(256),
+        transforms.Resize(256),
         transforms.RandomHorizontalFlip(),
         transforms.CenterCrop(224),
         transforms.ToTensor(),
         transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
     ]),
     val_path: transforms.Compose([
-        transforms.Scale(256),
+        transforms.Resize(256),
         transforms.RandomHorizontalFlip(),
         transforms.CenterCrop(224),
         transforms.ToTensor(),
@@ -225,7 +225,7 @@ def train(num_epoch, option, num_layer, test_load, cuda):
                     G.train()
                     F1.train()
                     F2.train()
-    elif test_load:
+    else:
         G_load = ResBase(option)
         F1_load = ResClassifier(num_layer=num_layer)
         F2_load = ResClassifier(num_layer=num_layer)
@@ -270,7 +270,7 @@ def train(num_epoch, option, num_layer, test_load, cuda):
             output1 = F1_load(output)
             output2 = F2_load(output)
             # print("Feature: {}\n Predict_value: {}".format(output, output2))
-            test_loss += F.nll_loss(output1, target1).data[0]
+            test_loss += F.nll_loss(output1, target1).item()
             pred = output1.data.max(1)[1]  # get the index of the max log-probability
             correct += pred.eq(target1.data).cpu().sum()
             pred = output2.data.max(1)[1]  # get the index of the max log-probability
@@ -290,6 +290,7 @@ def train(num_epoch, option, num_layer, test_load, cuda):
         else:
             use_gpu = False
         # configure network path
+
         if (100. * correct /size) > (100. *correct2 /size):
             predict_network_path = F1_path
         else:
@@ -301,6 +302,7 @@ def train(num_epoch, option, num_layer, test_load, cuda):
         source_path = 'chn_training_list.txt'
         target_path = 'chn_validation_list.txt'
         cls_source_list, cls_validation_list = sep.split_set(source_path, class_num)
+        source_list = sep.dimension_rd(cls_source_list)
 
         if args.validation_method == 'Source_Risk':
             cv_loss = source_risk.cross_validation_loss(args, feature_network_path, predict_network_path, num_layer, cls_source_list,
@@ -308,18 +310,18 @@ def train(num_epoch, option, num_layer, test_load, cuda):
                                                 class_num, 256,
                                                 224, batch_size,
                                                 use_gpu)
-        # elif args.validation_method == 'Dev':
-        #     cv_loss = dev.cross_validation_loss(feature_network_path, predict_network_path, num_layer, cls_source_list,
-        #                                         target_path, cls_validation_list,
-        #                                         class_num, 256,
-        #                                         224, batch_size,
-        #                                         use_gpu)
-        # else:
-        #     cv_loss = dev_icml.cross_validation_loss(feature_network_path, predict_network_path, num_layer, cls_source_list,
-        #                                         target_path, cls_validation_list,
-        #                                         class_num, 256,
-        #                                         224, batch_size,
-        #                                         use_gpu)
+        elif args.validation_method == 'Dev_icml':
+            cv_loss = dev_icml.cross_validation_loss(args, feature_network_path, predict_network_path, num_layer, source_list,
+                                                target_path, cls_validation_list,
+                                                class_num, 256,
+                                                224, batch_size,
+                                                use_gpu)
+        else:
+            cv_loss = dev.cross_validation_loss(args, feature_network_path, predict_network_path, num_layer, cls_source_list,
+                                                target_path, cls_validation_list,
+                                                class_num, 256,
+                                                224, batch_size,
+                                                use_gpu)
         print(cv_loss)
 
 def test(epoch):

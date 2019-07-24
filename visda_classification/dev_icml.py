@@ -2,6 +2,11 @@ import random
 import torch
 import math
 import numpy as np
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import torch.optim as optim
+import torch.utils.data as util_data
 from sklearn.neural_network import MLPClassifier
 from sklearn.model_selection import train_test_split
 import torch.utils.data as util_data
@@ -10,6 +15,7 @@ import pre_process as prep
 import torch.nn as nn
 from torch.autograd import Variable
 import seperate_data
+from basenet import *
 
 def get_dev_risk(weight, error):
     """
@@ -49,9 +55,10 @@ def get_weight(source_feature, target_feature, validation_feature): # 这三个f
     decays = [1e-1, 3e-2, 1e-2, 3e-3, 1e-3, 3e-4, 1e-4, 3e-5, 1e-5]
     val_acc = []
     domain_classifiers = []
+    print(decays)
     
     for decay in decays:
-        domain_classifier = MLPClassifier(hidden_layer_sizes=(d, d, 2),activation='relu',alpha=decay, max_iter=10000)
+        domain_classifier = MLPClassifier(hidden_layer_sizes=(d, d, 2),activation='relu',alpha=decay)
         domain_classifier.fit(feature_for_train, label_for_train)
         output = domain_classifier.predict(feature_for_test)
         acc = np.mean((label_for_test == output).astype(np.float32))
@@ -79,7 +86,9 @@ def predict_loss(cls, y_pre): #requires how the loss is calculated for the predu
     cls_torch = np.full(1, cls)
     pre_cls_torch = y_pre.double()
     target = torch.from_numpy(cls_torch).cuda()
+    # target = cls
     entropy = nn.CrossEntropyLoss()
+    print(cls)
     return entropy(pre_cls_torch, target)
 
 
@@ -120,7 +129,8 @@ def get_label_list(target_list, predict_network_name, resize_size, crop_size, ba
             count += 1
     return label_list
 
-def cross_validation_loss(feature_network, predict_network, src_list, target_path, val_list, class_num, resize_size, crop_size, batch_size, use_gpu):
+def cross_validation_loss(args, feature_network_path, predict_network_path, num_layer, src_list, target_path, val_list, class_num,
+                          resize_size, crop_size, batch_size, use_gpu):
     """
     Main function for computing the CV loss
     :param feature_network:
@@ -134,6 +144,18 @@ def cross_validation_loss(feature_network, predict_network, src_list, target_pat
     :param batch_size:
     :return:
     """
+    option = 'resnet' + args.resnet
+    G = ResBase(option)
+    F1 = ResClassifier(num_layer=num_layer)
+
+    G.load_state_dict(torch.load(feature_network_path))
+    F1.load_state_dict(torch.load(predict_network_path))
+    if use_gpu:
+        G.cuda()
+        F1.cuda()
+    G.eval()
+    F1.eval()
+
     val_list = seperate_data.dimension_rd(val_list)
 
     tar_list = open(target_path).readlines()
@@ -144,10 +166,10 @@ def cross_validation_loss(feature_network, predict_network, src_list, target_pat
     
     dsets_src = ImageList(src_list, transform=prep_dict)
     dset_loaders_src = util_data.DataLoader(dsets_src, batch_size=batch_size, shuffle=True, num_workers=4)
-    dsets_val = ImageList(val_list, transform=prep_dict)
-    dset_loaders_val = util_data.DataLoader(dsets_val, batch_size=batch_size, shuffle=True, num_workers=4)
-    dsets_tar = ImageList(tar_list, transform=prep_dict)
-    dset_loaders_tar = util_data.DataLoader(dsets_tar, batch_size=batch_size, shuffle=True, num_workers=4)
+    # dsets_val = ImageList(val_list, transform=prep_dict)
+    # dset_loaders_val = util_data.DataLoader(dsets_val, batch_size=batch_size, shuffle=True, num_workers=4)
+    # dsets_tar = ImageList(tar_list, transform=prep_dict)
+    # dset_loaders_tar = util_data.DataLoader(dsets_tar, batch_size=batch_size, shuffle=True, num_workers=4)
 
     # prepare source feature
     iter_src = iter(dset_loaders_src)
@@ -156,49 +178,75 @@ def cross_validation_loss(feature_network, predict_network, src_list, target_pat
         src_input, src_labels = Variable(src_input).cuda(), Variable(src_labels).cuda()
     else:
         src_input, src_labels = Variable(src_input), Variable(src_labels)
-    src_feature, _ = feature_network(src_input)
-    src_feature_de = src_feature.detach().cpu().numpy()
+    # src_feature, _ = feature_network(src_input)
+
+    feature_val = G(src_input)
+    src_feature_de = feature_val.detach().detach().cpu().numpy()
+
+    # src_feature_de = src_feature.detach().cpu().numpy()
     for _ in range(len(dset_loaders_src) - 1):
         src_input, src_labels = iter_src.next()
         if use_gpu:
             src_input, src_labels = Variable(src_input).cuda(), Variable(src_labels).cuda()
         else:
             src_input, src_labels = Variable(src_input), Variable(src_labels)
-        src_feature_new, _ = feature_network(src_input)
+        # src_feature_new, _ = feature_network(src_input)
+        # print("Src_input: {}".format(src_input))
+        # print("Src_shape: {}".format(src_input.shape))
+        src_feature_new = G(src_input)
         src_feature_new_de = src_feature_new.detach().cpu().numpy()
+        # src_feature_new_de = src_feature_new.detach().cpu().numpy()
         src_feature_de = np.append(src_feature_de, src_feature_new_de, axis=0)
         # src_feature = torch.cat((src_feature, src_feature_new), 0)
+    print("Pass Source")
 
     # prepare target feature
+
+    dsets_tar = ImageList(tar_list, transform=prep_dict)
+    dset_loaders_tar = util_data.DataLoader(dsets_tar, batch_size=batch_size, shuffle=True, num_workers=4)
+
+
     iter_tar = iter(dset_loaders_tar)
     tar_input, _ = iter_tar.next()
     if use_gpu:
         tar_input, _ = Variable(tar_input).cuda(), Variable(_).cuda()
     else:
         src_input, _ = Variable(tar_input), Variable(_)
-    tar_feature, _ = feature_network(tar_input)
+    # tar_feature, _ = feature_network(tar_input)
+    tar_feature = G(tar_input)
     tar_feature_de = tar_feature.detach().cpu().numpy()
+    # tar_feature_de = tar_feature.detach().cpu().numpy()
     for _ in range(len(dset_loaders_tar) - 1):
         tar_input, _ = iter_tar.next()
         if use_gpu:
             tar_input, _ = Variable(tar_input).cuda(), Variable(_).cuda()
         else:
             src_input, _ = Variable(tar_input), Variable(_)
-        tar_feature_new, _ = feature_network(tar_input)
-        tar_feature_new_de = src_feature_new.detach().cpu().numpy()
+        # tar_feature_new, _ = feature_network(tar_input)
+        tar_feature_new = G(tar_input)
+        tar_feature_new_de = tar_feature_new.detach().cpu().numpy()
+        # tar_feature_new_de = tar_feature_new.detach().cpu().numpy()
         tar_feature_de = np.append(tar_feature_de, tar_feature_new_de, axis=0)
         # tar_feature = torch.cat((tar_feature, tar_feature_new), 0)
 
+    print("Pass Target")
     # prepare validation feature and predicted label for validation
+
+    dsets_val = ImageList(val_list, transform=prep_dict)
+    dset_loaders_val = util_data.DataLoader(dsets_val, batch_size=batch_size, shuffle=True, num_workers=4)
+
     iter_val = iter(dset_loaders_val)
     val_input, val_labels = iter_val.next()
     if use_gpu:
         val_input, val_labels = Variable(val_input).cuda(), Variable(val_labels).cuda()
     else:
         val_input, val_labels = Variable(val_input), Variable(val_labels)
-    val_feature, _ = feature_network(val_input)
-    _, pred_label = predict_network(val_input)
+    # val_feature, _ = feature_network(val_input)
+    # _, pred_label = predict_network(val_input)
+    val_feature = G(val_input)
+    pred_label = F1(val_feature)
     val_feature_de = val_feature.detach().cpu().numpy()
+    # val_feature_de = val_feature.detach().cpu().numpy()
 
     w = pred_label[0].shape[0]
     error = np.zeros(1)
@@ -209,10 +257,13 @@ def cross_validation_loss(feature_network, predict_network, src_list, target_pat
     print(pred_label.shape)
     print(len(val_feature_de))
     for num_image in range(1, len(pred_label)):
+        new_error = np.zeros(1)
         single_pred_label = pred_label[num_image]
         w = single_pred_label.shape[0]
         single_val_label = val_labels[num_image]
-        error = np.append(error, [[predict_loss(single_val_label.item(), single_pred_label.reshape(1, w)).item()]], axis=0)
+        new_error[0] = predict_loss(single_val_label.item(), single_pred_label.reshape(1, w)).item()
+        new_error = new_error.reshape(1,1)
+        error = np.append(error, new_error, axis=0)
 
     for _ in range(len(dset_loaders_val) - 1):
         val_input, val_labels = iter_val.next()
@@ -220,17 +271,25 @@ def cross_validation_loss(feature_network, predict_network, src_list, target_pat
             val_input, val_labels = Variable(val_input).cuda(), Variable(val_labels).cuda()
         else:
             val_input, val_labels = Variable(val_input), Variable(val_labels)
-        val_feature_new, _ = feature_network(val_input)
+        # val_feature_new, _ = feature_network(val_input)
+        val_feature_new = G(val_input)
 
         val_feature_new_de = val_feature_new.detach().cpu().numpy()
+        # val_feature_new_de = val_feature_new.detach().cpu().numpy()
         val_feature_de = np.append(val_feature_de, val_feature_new_de, axis=0)
         # val_feature = torch.cat((val_feature, val_feature_new), 0)
-        _, pred_label = predict_network(val_input)
+        # _, pred_label = predict_network(val_input)
+
+        pred_label = F1(val_feature_new)
         for num_image in range(len(pred_label)):
+            new_error = np.zeros(1)
             single_pred_label = pred_label[num_image]
             w = single_pred_label.shape[0]
             single_val_label = val_labels[num_image]
-            error = np.append(error, [[predict_loss(single_val_label.item(), single_pred_label.reshape(1, w)).item()]], axis=0)
+            new_error[0] = predict_loss(single_val_label.item(), single_pred_label.reshape(1, w)).item()
+            new_error = new_error.reshape(1, 1)
+            error = np.append(error, new_error, axis=0)
+    print("Pass validation")
     #     print("Insides the for loop")
     #     print(len(error))
     #     print(len(val_feature_de))
@@ -238,7 +297,13 @@ def cross_validation_loss(feature_network, predict_network, src_list, target_pat
     # print("Input for scrore calculation: ")
     # print(len(error))
     # print(len(val_feature_de))
+    print(src_feature_de)
+    print(tar_feature_de)
+    print(val_feature_de)
     weight = get_weight(src_feature_de, tar_feature_de, val_feature_de)
+    print(weight)
+    print(error)
     cross_val_loss = cross_val_loss + get_dev_risk(weight, error)
+    print(cross_val_loss)
 
     return cross_val_loss
