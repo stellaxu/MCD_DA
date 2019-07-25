@@ -127,8 +127,13 @@ elif args.optimizer == 'adam':
 else:
     optimizer_g = optim.Adadelta(G.features.parameters(),lr=args.lr,weight_decay=0.0005)
     optimizer_f = optim.Adadelta(list(F1.parameters())+list(F2.parameters()),lr=args.lr,weight_decay=0.0005)    
-    
-f=open('args.saveacc/acc_val.txt', 'a+')
+
+if test_load==False:
+   os.mkdir(args.saveacc)
+   f=open(args.saveacc+'/acc_val.txt', 'a+')
+else:
+   os.mkdir(args.saveacc+'2')
+   f=open(args.saveacc+'2/acc_val.txt', 'a+')  
     
 def train(num_epoch, option, num_layer, test_load, cuda):
     criterion = nn.CrossEntropyLoss().cuda()
