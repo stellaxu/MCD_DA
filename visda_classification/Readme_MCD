@@ -1,0 +1,21 @@
+Visda2018数据集下载：
+直接运行以下linux command(数据量很大，耗时可能比较久)
+wget http://csr.bu.edu/ftp/visda/2018/openset/train.tar
+tar xvf train.tar
+
+wget http://csr.bu.edu/ftp/visda/2018/openset/validation.tar
+tar xvf validation.tar  
+
+wget http://csr.bu.edu/ftp/visda/2018/openset/test.tar
+tar xvf test.tar 
+
+源代码github路径：
+https://github.com/astrongstorm/MCD_DA
+
+下载完原代码后，
+在MCD_DA/visda_classification中三个'chn...txt'的文件，打开后每一行最开始的路径最开始的'/work/xuweinan'替换成你存Visda_Data的路径
+
+
+运行代码时，要切换到MCD_DA/visda_classification文件夹内，先运行run_MCD_train.sh,结束后再运行run_MCD_val.sh
+
+两个run....sh都运行完后，把整个visda_classification文件夹发给我们
