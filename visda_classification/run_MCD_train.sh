@@ -1,0 +1,6 @@
+CUDA_VISIBLE_DEVICES=0 python res_train_main.py --epochs 10 --save test/mcd --train_path /work/xuweinan/Visda_Data/train --val_path /work/xuweinan/Visda_Data/validation --lr 0.01 --num_k 2 --saveacc lr_0.01_k_2_acc 
+CUDA_VISIBLE_DEVICES=1 python res_train_main.py --epochs 10 --save test/mcd --train_path /work/xuweinan/Visda_Data/train --val_path /work/xuweinan/Visda_Data/validation --lr 0.01 --num_k 4 --saveacc lr_0.01_k_4_acc
+CUDA_VISIBLE_DEVICES=2 python res_train_main.py --epochs 10 --save test/mcd --train_path /work/xuweinan/Visda_Data/train --val_path /work/xuweinan/Visda_Data/validation --lr 0.001 --num_k 2 --saveacc lr_0.001_k_2_acc
+CUDA_VISIBLE_DEVICES=3 python res_train_main.py --epochs 10 --save test/mcd --train_path /work/xuweinan/Visda_Data/train --val_path /work/xuweinan/Visda_Data/validation --lr 0.001 --num_k 4 --saveacc lr_0.001_k_4_acc
+CUDA_VISIBLE_DEVICES=4 python res_train_main.py --epochs 10 --save test/mcd --train_path /work/xuweinan/Visda_Data/train --val_path /work/xuweinan/Visda_Data/validation --lr 0.0001 --num_k 2 --saveacc lr_0.0001_k_2_acc
+CUDA_VISIBLE_DEVICES=5 python res_train_main.py --epochs 10 --save test/mcd --train_path /work/xuweinan/Visda_Data/train --val_path /work/xuweinan/Visda_Data/validation --lr 0.0001 --num_k 4 --saveacc lr_0.0001_k_4_acc
