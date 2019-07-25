@@ -1,3 +1,4 @@
-virtualenv XXX
-source XXX/bin/activate
+pip3 install virtualenv
+virtualenv -p python路径 my_project
+source my_project/bin/activate
 deactivate
