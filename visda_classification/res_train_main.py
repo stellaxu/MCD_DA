@@ -64,7 +64,7 @@ val_path = args.val_path
 num_k = args.num_k
 num_layer = args.num_layer
 batch_size = args.batch_size
-save_path = args.save+'_'+str(args.num_k)
+save_path = args.save+'_'+str(args.lr)+'_'+str(args.num_k)
 
 data_transforms = {
     train_path: transforms.Compose([
