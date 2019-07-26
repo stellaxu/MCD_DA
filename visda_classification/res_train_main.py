@@ -132,7 +132,8 @@ if test_load==False:
    os.mkdir(args.saveacc)
    f=open(args.saveacc+'/acc_val.txt', 'a+')
 else:
-   os.mkdir(args.saveacc+'2')
+   if os.path.exists(args.saveacc+'2')==False:
+      os.mkdir(args.saveacc+'2')
    f=open(args.saveacc+'2/acc_val.txt', 'a+')  
     
 def train(num_epoch, option, num_layer, test_load, cuda):
