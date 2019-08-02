@@ -129,7 +129,8 @@ else:
     optimizer_f = optim.Adadelta(list(F1.parameters())+list(F2.parameters()),lr=args.lr,weight_decay=0.0005)    
 
 if test_load==False:
-   os.mkdir(args.saveacc)
+   if os.path.exists(args.saveacc)==False:
+      os.mkdir(args.saveacc)
    f=open(args.saveacc+'/acc_val.txt', 'a+')
 else:
    if os.path.exists(args.saveacc+'2')==False:
